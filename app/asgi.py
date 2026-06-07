@@ -10,6 +10,7 @@ A basic ASGI application demonstrating:
 import json
 
 import msgspec
+import ujson
 
 from app.schema import marshmallow_schema, msgspec_schema, pydantic_schema
 from app.users import Users
@@ -54,6 +55,8 @@ async def application(scope, receive, send):
         await api_pydantic_page(scope, receive, send)
     elif path == "/api/marshmallow":
         await api_marshmallow_page(scope, receive, send)
+    elif path == "/api/marshmallow-ujson":
+        await api_marshmallow_ujson_page(scope, receive, send)
     elif path == "/api/msgspec":
         await api_msgspec_page(scope, receive, send)
     else:
@@ -265,6 +268,20 @@ async def api_marshmallow_page(scope, receive, send):
     payload = json.loads(Users.get_users())
     data = schema.load(payload)
     body = json.dumps(schema.dump(data)).encode("utf-8")
+
+    await send_json(send, 200, body)
+
+
+async def api_marshmallow_ujson_page(scope, receive, send):
+    """Same as the marshmallow handler, but using ujson for parse/serialize.
+
+    Isolates how much of that path is the json encode/decode (swappable) versus
+    marshmallow's own pure-Python load/dump (the dominant, unswappable cost).
+    """
+    schema = marshmallow_schema.UsersResponse()
+    payload = ujson.loads(Users.get_users())
+    data = schema.load(payload)
+    body = ujson.dumps(schema.dump(data)).encode("utf-8")
 
     await send_json(send, 200, body)
 
