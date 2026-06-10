@@ -56,21 +56,26 @@ Creates a `BulletApp` instance with two routes:
 
 Core classes:
 
-- **`BulletApp`** — callable ASGI application. Handles the `lifespan` protocol, drains request body, does route matching via `self.handlers` dict, dispatches to `Handler.execute()`, and sends JSON responses via `send_json`.
+- **`BulletApp`** — callable ASGI application. Handles the `lifespan` protocol, drains request body, iterates `self.handlers` (a `list[Handler]`) for route matching, dispatches to `Handler.execute()`, and sends JSON responses via `send_json`. Falls back to a hardcoded default response for unmatched routes.
 
-- **`Handler`** — wraps a route pattern and async handler callable. `execute(request)` calls the handler. Currently hardcoded to pass `age=16` (WIP — parameter extraction not yet wired).
+- **`Handler`** — wraps a route pattern and async handler callable. `match(path)` uses a compiled regex to extract path parameters as `dict[str, str]` or `None`. `execute(request, params)` converts param values using handler type annotations (`_convert_param`) and calls the handler.
 
 - **`Request`** — parsed ASGI `scope` into typed attributes (method, path, query_string, headers, body, etc.).
 
 - **`Addr`** — dataclass for server/client address (host, port).
 
-- **`validate_handler(path, handler)`** — verifies that `<param>` placeholders in the route pattern correspond to annotated parameters on the handler. Raises `ValueError` if mismatched.
+Utility functions:
+
+- **`validate_handler(path, handler)`** — verifies that `<param>` placeholders in the route pattern correspond to annotated parameters on the handler (and are not defaulted). Raises `ValueError` if mismatched.
+
+- **`_compile_route(pattern)`** — converts a Flask-style route pattern (`/age/<age>`) into a compiled regex with named capture groups.
+
+- **`_convert_param(value, annotation)`** — converts a string param value to `int`, `float`, or `str` based on the handler's type annotation.
 
 **Known issues / WIP in bullet:**
-- Route matching in `BulletApp.__call__` has hardcoded debug strings (`path = '/age/<age>'`), not real pattern matching.
-- `Handler.execute` hardcodes `age=16` instead of extracting the value from the actual request path.
-- `BulletApp.send_json` passes `io.StringIO(body)` to `http.response.body` — likely a bug (should be `body` bytes directly).
-- `app/asgi.py`'s `send_json` is imported into bullet but also has a local duplicate `BulletApp.send_json`.
+- Unmatched routes return HTTP 200 with a hardcoded JSON body instead of 404.
+- `Request.client` incorrectly uses `scope.get("server", [])` — should be `scope.get("client", [])`.
+- The `Handler` constructor validates params eagerly in `validate_handler`, but doesn't check that the handler has a `request` parameter (the first positional arg).
 
 ### `app/asgi.py` — raw ASGI reference
 A standalone raw ASGI `application(scope, receive, send)` with:
@@ -80,7 +85,7 @@ A standalone raw ASGI `application(scope, receive, send)` with:
 - Partial `/api` routes for pydantic, marshmallow, msgspec (some commented out)
 - The `home_page` handler is incomplete
 
-This module is **not** wired into `main.py` — it exists as a learning reference. Its `send_json` helper is imported by `bullet/__init__.py`.
+This module is **not** wired into `main.py` — it exists as a learning reference. `bullet/__init__.py` has its own independent `BulletApp.send_json` implementation.
 
 ## Dependencies (`pyproject.toml`)
 
