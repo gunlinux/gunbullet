@@ -1,5 +1,7 @@
 from typing import Awaitable, Callable, Any
 import dataclasses
+import inspect
+import json
 from urllib.parse import parse_qs as _parse_qs
 
 import re
@@ -7,27 +9,57 @@ import re
 param_reg = re.compile(r"<([\w]+)>")
 
 
+def _json_dumps(obj: object) -> bytes:
+    return json.dumps(obj).encode("utf-8")
+
+
 def validate_handler(path: str, handler: Callable[..., Awaitable[bytes]]) -> None:
-    params = param_reg.findall(path)
-    for param in params:
-        if param not in handler.__annotations__:
-            raise ValueError
-        if handler.__defaults__ and param in handler.__defaults__:
-            raise ValueError
+    """Verify every ``<param>`` in *path* has a matching handler annotation without a default."""
+    params = set(param_reg.findall(path))
+    sig = inspect.signature(handler)
+    for name, p in sig.parameters.items():
+        if name == "request":
+            continue
+        if name not in params:
+            continue
+        if p.default is not inspect.Parameter.empty:
+            raise ValueError(f"route param '{name}' must not have a default value")
+        params.discard(name)
+    if params:
+        raise ValueError(
+            f"handler missing annotations for route params: {', '.join(sorted(params))}"
+        )
 
 
 def _compile_route(pattern: str) -> re.Pattern:
     """Convert a Flask-style route pattern like ``/age/<age>`` into a compiled regex."""
-    regex = re.sub(r"<(\w+)>", r"(?P<\1>[^/]+)", pattern)
-    return re.compile(f"^{regex}$")
+    parts = re.split(r"(<\w+>)", pattern)
+    escaped = ""
+    for part in parts:
+        m = re.fullmatch(r"<(\w+)>", part)
+        if m:
+            escaped += f"(?P<{m[1]}>[^/]+)"
+        else:
+            escaped += re.escape(part)
+    return re.compile(f"^{escaped}$")
+
+
+class BadRequest(Exception):
+    """Raised when request parameters fail validation (bad types, bad values)."""
 
 
 def _convert_param(value: str, annotation: type) -> Any:
     """Convert a string param to the type specified in the handler annotation."""
     if annotation is int:
-        return int(value)
+        try:
+            return int(value)
+        except ValueError:
+            raise BadRequest(f"invalid integer: {value!r}")
     if annotation is float:
-        return float(value)
+        try:
+            return float(value)
+        except ValueError:
+            raise BadRequest(f"invalid float: {value!r}")
     if annotation is str:
         return value
     return value
@@ -81,12 +113,17 @@ class Handler:
             return None
         return m.groupdict()
 
-    async def execute(self, request: Request, params: dict[str, str]) -> bytes:
+    async def execute(
+        self, request: Request, params: dict[str, str]
+    ) -> tuple[int, bytes]:
         kwargs: dict[str, Any] = {}
-        for name, value in params.items():
-            annotation = self.annotations.get(name, str)
-            kwargs[name] = _convert_param(value, annotation)
-        return await self.handler(request, **kwargs)
+        try:
+            for name, value in params.items():
+                annotation = self.annotations.get(name, str)
+                kwargs[name] = _convert_param(value, annotation)
+        except BadRequest as exc:
+            return 400, _json_dumps({"error": str(exc)})
+        return 200, await self.handler(request, **kwargs)
 
 
 class BulletApp:
@@ -111,13 +148,19 @@ class BulletApp:
             await self.lifespan(scope, receive, send)
             return
 
-        more_body = True
-        body = []
+        body = b""
+        more_body = scope.get("method", "GET").upper() not in {
+            "GET",
+            "HEAD",
+            "OPTIONS",
+            "DELETE",
+        }
         while more_body:
             event = await receive()
+            if event["type"] == "http.disconnect":
+                return
             more_body = event.get("more_body", False)
-            body.append(event["body"])
-        body = b"".join(body)
+            body += event.get("body", b"")
 
         path = scope["path"]
         request = Request(scope, body)
@@ -125,10 +168,11 @@ class BulletApp:
         for handler in self.handlers:
             params = handler.match(path)
             if params is not None:
-                await self.send_json(send, 200, await handler.execute(request, params))
+                status, response_body = await handler.execute(request, params)
+                await self.send_json(send, status, response_body)
                 return
 
-        await self.send_json(send, 200, b'{"name": "loki", "age": 37}')
+        await self.send_json(send, 404, _json_dumps({"error": "Not found"}))
 
     async def send_json(self, send, status, body):
         """Emit a JSON response. ``body`` is already JSON-encoded bytes."""

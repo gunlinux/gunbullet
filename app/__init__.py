@@ -8,8 +8,6 @@ def create_app_asgi():
     app = BulletApp()
 
     async def index_page(request: Request) -> bytes:
-        print(request)
-        print("index_page here")
         body = json.dumps(base_d).encode("utf-8")
         return body
 
