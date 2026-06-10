@@ -1,5 +1,6 @@
 from typing import Awaitable, Callable, Any
 import dataclasses
+from urllib.parse import parse_qs as _parse_qs
 
 import re
 
@@ -39,19 +40,31 @@ class Addr:
 
 
 class Request:
-    def __init__(self, scope: dict[str, Any], body: bytes | None = None):
-        self.request_type: str = scope.get("type", "")
-        self.http_version: str = scope.get("http_version", "")
-        self.server: Addr = Addr(*scope.get("server", []))
-        self.client: Addr = Addr(*scope.get("server", []))
-        self.scheme: str = scope.get("scheme", "")
+    def __init__(self, scope: dict[str, Any], body: bytes = b""):
         self.method: str = scope.get("method", "")
-        self.path = scope.get("path", "")
+        self.path: str = scope.get("path", "")
         self.raw_path: bytes = scope.get("raw_path", b"")
         self.query_string: bytes = scope.get("query_string", b"")
-        self.body: bytes | None = body
+        self.body: bytes = body
         self.root_path: str = scope.get("root_path", "")
         self.headers: list[tuple[bytes, bytes]] = scope.get("headers", [])
+
+        server = scope.get("server")
+        self.server: Addr | None = Addr(*server) if server else None
+
+        client = scope.get("client")
+        self.client: Addr | None = Addr(*client) if client else None
+
+    def get_header(self, name: str) -> str | None:
+        target = name.lower().encode()
+        for key, val in self.headers:
+            if key.lower() == target:
+                return val.decode()
+        return None
+
+    @property
+    def query_params(self) -> dict[str, list[str]]:
+        return _parse_qs(self.query_string.decode())
 
 
 class Handler:

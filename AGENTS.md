@@ -74,7 +74,6 @@ Utility functions:
 
 **Known issues / WIP in bullet:**
 - Unmatched routes return HTTP 200 with a hardcoded JSON body instead of 404.
-- `Request.client` incorrectly uses `scope.get("server", [])` — should be `scope.get("client", [])`.
 - The `Handler` constructor validates params eagerly in `validate_handler`, but doesn't check that the handler has a `request` parameter (the first positional arg).
 
 ### `app/asgi.py` — raw ASGI reference

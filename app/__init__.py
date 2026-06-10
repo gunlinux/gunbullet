@@ -14,7 +14,8 @@ def create_app_asgi():
         return body
 
     async def param_page(
-        request: Request, age: int,
+        request: Request,
+        age: int,
     ) -> bytes:
         temp = {"age": age}
         return json.dumps(temp).encode("utf-8")
