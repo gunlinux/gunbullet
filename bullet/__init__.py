@@ -2,6 +2,8 @@ from typing import Awaitable, Callable, Any
 import dataclasses
 import inspect
 import json
+
+import msgspec
 from urllib.parse import parse_qs as _parse_qs
 
 import re
@@ -9,11 +11,9 @@ import re
 param_reg = re.compile(r"<([\w]+)>")
 
 
-def _json_dumps(obj: object) -> bytes:
-    return json.dumps(obj).encode("utf-8")
-
-
-def validate_handler(path: str, handler: Callable[..., Awaitable[str | dict]]) -> None:
+def validate_handler(
+    path: str, handler: Callable[..., Awaitable[str | dict | msgspec.Struct]]
+) -> None:
     """Verify every ``<param>`` in *path* has a matching handler annotation without a default."""
     params = set(param_reg.findall(path))
     sig = inspect.signature(handler)
@@ -100,7 +100,9 @@ class Request:
 
 
 class Handler:
-    def __init__(self, route: str, handler: Callable[..., Awaitable[str | dict]]):
+    def __init__(
+        self, route: str, handler: Callable[..., Awaitable[str | dict | msgspec.Struct]]
+    ):
         self.handler = handler
         self.path = route
         self.pattern = _compile_route(route)
@@ -117,7 +119,7 @@ class Handler:
         self,
         request: Request,
         params: dict[str, str] | None = None,
-    ) -> tuple[int, str | dict]:
+    ) -> tuple[int, str | dict | msgspec.Struct]:
         if not params:
             return 200, await self.handler(request)
         kwargs: dict[str, Any] = {}
@@ -135,7 +137,7 @@ class BulletApp:
         self.handlers: list[Handler] = []
 
     def add_handler(
-        self, route: str, handler: Callable[..., Awaitable[str | dict]]
+        self, route: str, handler: Callable[..., Awaitable[str | dict | msgspec.Struct]]
     ) -> None:
         validate_handler(route, handler=handler)
         self.handlers.append(Handler(route=route, handler=handler))
@@ -185,8 +187,10 @@ class BulletApp:
         await self.send_json(send, 404, {"error": "Not found"})
 
     async def send_json(self, send, status, body):
-        """Emit a JSON response. ``body`` is a ``str`` or ``dict``, encoded here."""
-        if isinstance(body, dict):
+        """Emit a JSON response. ``body`` is a ``str``, ``dict``, or ``msgspec.Struct``."""
+        if isinstance(body, msgspec.Struct):
+            raw = msgspec.json.encode(body)
+        elif isinstance(body, dict):
             raw = json.dumps(body).encode("utf-8")
         else:
             raw = json.dumps(body).encode("utf-8")

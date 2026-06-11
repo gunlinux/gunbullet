@@ -1,5 +1,12 @@
+from msgspec import Struct
+
 from bullet import BulletApp, Request
 from bullet.testclient import TestClient
+
+
+class UserResponse(Struct):
+    name: str
+    age: int
 
 
 def test_index_route(client: TestClient) -> None:
@@ -55,3 +62,18 @@ def test_handler_returning_dict_is_json_encoded(app: BulletApp) -> None:
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/json; charset=utf-8"
         assert response.json() == {"status": "ok", "count": 42}
+
+
+def test_handler_returning_msgspec_struct_is_json_encoded(app: BulletApp) -> None:
+    """Handler returning an msgspec Struct is serialized via msgspec.json.encode."""
+
+    async def struct_handler(request: Request) -> UserResponse:
+        return UserResponse(name="loki", age=37)
+
+    app.add_handler("/struct", struct_handler)
+
+    with TestClient(app) as client:
+        response = client.get("/struct")
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/json; charset=utf-8"
+        assert response.json() == {"name": "loki", "age": 37}
