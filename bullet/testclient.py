@@ -31,7 +31,9 @@ class _ASGITransport(httpx.BaseTransport):
     def __init__(
         self,
         app: BulletApp,
-        portal_factory: Callable[[], "contextlib.AbstractContextManager[BlockingPortal]"],
+        portal_factory: Callable[
+            [], "contextlib.AbstractContextManager[BlockingPortal]"
+        ],
         raise_app_exceptions: bool = True,
         root_path: str = "",
         client: tuple[str, int] = ("testclient", 50000),
@@ -182,10 +184,10 @@ class TestClient(httpx.Client):
             def reset_portal() -> None:
                 self.portal = None
 
-            send: anyio.create_memory_object_stream[MutableMapping[str, Any] | None] = (
+            send: anyio.create_memory_object_stream[MutableMapping[str, Any] | None] = (  # pyright: ignore[reportAssignmentType]
                 anyio.create_memory_object_stream(math.inf)
             )
-            receive: anyio.create_memory_object_stream[MutableMapping[str, Any]] = (
+            receive: anyio.create_memory_object_stream[MutableMapping[str, Any]] = (  # pyright: ignore[reportAssignmentType]
                 anyio.create_memory_object_stream(math.inf)
             )
             for channel in (*send, *receive):
