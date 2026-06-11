@@ -18,16 +18,15 @@ class AgeResponse(Struct):
 def create_app_asgi():
     app = BulletApp()
 
+    @app.route("/")
     async def index_page(request: Request) -> UserResponse:
         return UserResponse(**base_d)
 
+    @app.route("/age/<age>")
     async def param_page(
         request: Request,
         age: int,
     ) -> AgeResponse:
         return AgeResponse(age=age)
-
-    app.add_handler("/", index_page)
-    app.add_handler("/age/<age>", param_page)
 
     return app

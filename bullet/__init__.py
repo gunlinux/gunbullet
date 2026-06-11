@@ -1,4 +1,4 @@
-from typing import Awaitable, Callable, Any
+from typing import Awaitable, Callable, Any, TypeVar
 import dataclasses
 import inspect
 import json
@@ -9,6 +9,10 @@ from urllib.parse import parse_qs as _parse_qs
 import re
 
 param_reg = re.compile(r"<([\w]+)>")
+
+HandlerFunc = TypeVar(
+    "HandlerFunc", bound=Callable[..., Awaitable[str | dict | msgspec.Struct]]
+)
 
 
 def validate_handler(
@@ -141,6 +145,23 @@ class BulletApp:
     ) -> None:
         validate_handler(route, handler=handler)
         self.handlers.append(Handler(route=route, handler=handler))
+
+    def route(self, path: str) -> Callable[[HandlerFunc], HandlerFunc]:
+        """Decorator that registers a handler for *path*.
+
+        Usage::
+
+            @app.route("/")
+            async def index(request: Request) -> dict:
+                return {"hello": "world"}
+        """
+
+        def decorator(handler: HandlerFunc) -> HandlerFunc:
+            validate_handler(path, handler=handler)
+            self.handlers.append(Handler(route=path, handler=handler))
+            return handler
+
+        return decorator
 
     async def lifespan(self, scope, receive, send):
         while True:
