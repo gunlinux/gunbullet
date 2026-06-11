@@ -13,7 +13,7 @@ def _json_dumps(obj: object) -> bytes:
     return json.dumps(obj).encode("utf-8")
 
 
-def validate_handler(path: str, handler: Callable[..., Awaitable[bytes]]) -> None:
+def validate_handler(path: str, handler: Callable[..., Awaitable[str | dict]]) -> None:
     """Verify every ``<param>`` in *path* has a matching handler annotation without a default."""
     params = set(param_reg.findall(path))
     sig = inspect.signature(handler)
@@ -100,7 +100,7 @@ class Request:
 
 
 class Handler:
-    def __init__(self, route: str, handler: Callable[..., Awaitable[bytes]]):
+    def __init__(self, route: str, handler: Callable[..., Awaitable[str | dict]]):
         self.handler = handler
         self.path = route
         self.pattern = _compile_route(route)
@@ -117,7 +117,7 @@ class Handler:
         self,
         request: Request,
         params: dict[str, str] | None = None,
-    ) -> tuple[int, bytes]:
+    ) -> tuple[int, str | dict]:
         if not params:
             return 200, await self.handler(request)
         kwargs: dict[str, Any] = {}
@@ -126,7 +126,7 @@ class Handler:
                 annotation = self.annotations.get(name, str)
                 kwargs[name] = _convert_param(value, annotation)
         except BadRequest as exc:
-            return 400, _json_dumps({"error": str(exc)})
+            return 400, {"error": str(exc)}
         return 200, await self.handler(request, **kwargs)
 
 
@@ -134,7 +134,9 @@ class BulletApp:
     def __init__(self):
         self.handlers: list[Handler] = []
 
-    def add_handler(self, route: str, handler: Callable[..., Awaitable[Any]]) -> None:
+    def add_handler(
+        self, route: str, handler: Callable[..., Awaitable[str | dict]]
+    ) -> None:
         validate_handler(route, handler=handler)
         self.handlers.append(Handler(route=route, handler=handler))
 
@@ -180,13 +182,17 @@ class BulletApp:
                 await self.send_json(send, status, response_body)
                 return
 
-        await self.send_json(send, 404, _json_dumps({"error": "Not found"}))
+        await self.send_json(send, 404, {"error": "Not found"})
 
     async def send_json(self, send, status, body):
-        """Emit a JSON response. ``body`` is already JSON-encoded bytes."""
+        """Emit a JSON response. ``body`` is a ``str`` or ``dict``, encoded here."""
+        if isinstance(body, dict):
+            raw = json.dumps(body).encode("utf-8")
+        else:
+            raw = json.dumps(body).encode("utf-8")
         headers = [
             (b"content-type", b"application/json; charset=utf-8"),
-            (b"content-length", str(len(body)).encode("utf-8")),
+            (b"content-length", str(len(raw)).encode("utf-8")),
         ]
         await send(
             {
@@ -195,4 +201,4 @@ class BulletApp:
                 "headers": headers,
             }
         )
-        await send({"type": "http.response.body", "body": body})
+        await send({"type": "http.response.body", "body": raw})

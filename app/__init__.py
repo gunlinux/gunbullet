@@ -1,5 +1,4 @@
 from bullet import BulletApp, Request
-import json
 
 base_d = {"name": "loki", "age": 37}
 
@@ -7,16 +6,14 @@ base_d = {"name": "loki", "age": 37}
 def create_app_asgi():
     app = BulletApp()
 
-    async def index_page(request: Request) -> bytes:
-        body = json.dumps(base_d).encode("utf-8")
-        return body
+    async def index_page(request: Request) -> dict:
+        return base_d
 
     async def param_page(
         request: Request,
         age: int,
-    ) -> bytes:
-        temp = {"age": age}
-        return json.dumps(temp).encode("utf-8")
+    ) -> dict:
+        return {"age": age}
 
     app.add_handler("/", index_page)
     app.add_handler("/age/<age>", param_page)

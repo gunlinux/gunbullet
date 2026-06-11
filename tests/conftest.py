@@ -1,5 +1,4 @@
 import functools
-import json
 from typing import Generator
 
 import pytest
@@ -13,11 +12,11 @@ from tests.types import TestClientFactory
 def app() -> BulletApp:
     app = BulletApp()
 
-    async def index_page(request: Request) -> bytes:
-        return json.dumps({"name": "loki", "age": 37}).encode("utf-8")
+    async def index_page(request: Request) -> dict:
+        return {"name": "loki", "age": 37}
 
-    async def param_page(request: Request, age: int) -> bytes:
-        return json.dumps({"age": age}).encode("utf-8")
+    async def param_page(request: Request, age: int) -> dict:
+        return {"age": age}
 
     app.add_handler("/", index_page)
     app.add_handler("/age/<age>", param_page)
