@@ -114,8 +114,12 @@ class Handler:
         return m.groupdict()
 
     async def execute(
-        self, request: Request, params: dict[str, str]
+        self,
+        request: Request,
+        params: dict[str, str] | None = None,
     ) -> tuple[int, bytes]:
+        if not params:
+            return 200, await self.handler(request)
         kwargs: dict[str, Any] = {}
         try:
             for name, value in params.items():
@@ -166,6 +170,10 @@ class BulletApp:
         request = Request(scope, body)
 
         for handler in self.handlers:
+            if "<" not in path and ">" not in path and handler.path == path:
+                status, response_body = await handler.execute(request)
+                await self.send_json(send, status, response_body)
+                return
             params = handler.match(path)
             if params is not None:
                 status, response_body = await handler.execute(request, params)
