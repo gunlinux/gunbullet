@@ -1,25 +1,26 @@
-from typing import Generator
 from bullet.testclient import TestClient
-from tests.types import TestClientFactory
-
-import pytest
 
 
-@pytest.fixture
-def client(app, test_client_factory: TestClientFactory) -> Generator[TestClient, None, None]:
-    with test_client_factory(app) as client:
-        yield client
-
-
-def test_url_path_for(client: TestClient) -> None:
-    assert client.url_path_for("func_homepage") == "/func"
-
-
-def test_func_route(client: TestClient) -> None:
-    response = client.get("/func")
+def test_index_route(client: TestClient) -> None:
+    response = client.get("/")
     assert response.status_code == 200
-    assert response.text == "Hello, world!"
+    assert response.headers["content-type"] == "application/json; charset=utf-8"
+    assert response.json() == {"name": "loki", "age": 37}
 
-    response = client.head("/func")
+
+def test_path_param_converted_to_int(client: TestClient) -> None:
+    response = client.get("/age/37")
     assert response.status_code == 200
-    assert response.text == ""
+    assert response.json() == {"age": 37}
+
+
+def test_path_param_bad_type_returns_400(client: TestClient) -> None:
+    response = client.get("/age/notanumber")
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid integer: 'notanumber'"}
+
+
+def test_unknown_route_returns_404(client: TestClient) -> None:
+    response = client.get("/does-not-exist")
+    assert response.status_code == 404
+    assert response.json() == {"error": "Not found"}
