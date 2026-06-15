@@ -1,6 +1,6 @@
 from msgspec import Struct
 
-from bullet import BulletApp, Request
+from bullet import BulletApp, Request, Response
 
 
 base_d = {"name": "loki", "age": 37}
@@ -15,18 +15,31 @@ class AgeResponse(Struct):
     age: int
 
 
+async def _domain_error_handler(_: Request, exc: Exception) -> Response:
+    return (
+        404,
+        {
+            "status_code": 500,
+            "error": "domain_error",
+            "detail": str(exc) or type(exc).__name__,
+        },
+    )
+
+
 def create_app_asgi():
     app = BulletApp()
 
     @app.route("/")
-    async def index_page(request: Request) -> UserResponse:
-        return UserResponse(**base_d)
+    async def index_page(_: Request) -> Response[UserResponse]:
+        return 200, UserResponse(**base_d)
 
     @app.route("/age/<age>")
     async def param_page(
         request: Request,
         age: int,
-    ) -> AgeResponse:
-        return AgeResponse(age=age)
+    ) -> Response[AgeResponse]:
+        return 200, AgeResponse(age=age)
+
+    app.add_exception_handler(ValueError, _domain_error_handler)
 
     return app

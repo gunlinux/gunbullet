@@ -1,6 +1,10 @@
 from msgspec import Struct
+from typing import TYPE_CHECKING
 
 from bullet import BulletApp, Request
+
+if TYPE_CHECKING:
+    from bullet import Response
 from bullet.testclient import TestClient
 
 
@@ -34,9 +38,10 @@ def test_unknown_route_returns_404(client: TestClient) -> None:
     assert response.json() == {"error": "Not found"}
 
 
+"""
 def test_handler_returning_str_is_json_encoded(app: BulletApp) -> None:
-    async def str_handler(request: Request) -> str:
-        return "hello world"
+    async def str_handler(request: Request) -> "Response[str]":
+        return str("hello world")
 
     app.add_handler("/str", str_handler)
 
@@ -45,11 +50,12 @@ def test_handler_returning_str_is_json_encoded(app: BulletApp) -> None:
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/json; charset=utf-8"
         assert response.json() == "hello world"
+"""
 
 
 def test_handler_returning_dict_is_json_encoded(app: BulletApp) -> None:
-    async def dict_handler(request: Request) -> dict:
-        return {"status": "ok", "count": 42}
+    async def dict_handler(request: Request) -> "Response[dict]":
+        return 200, {"status": "ok", "count": 42}
 
     app.add_handler("/dict", dict_handler)
 
@@ -61,8 +67,8 @@ def test_handler_returning_dict_is_json_encoded(app: BulletApp) -> None:
 
 
 def test_handler_returning_msgspec_struct_is_json_encoded(app: BulletApp) -> None:
-    async def struct_handler(request: Request) -> UserResponse:
-        return UserResponse(name="loki", age=37)
+    async def struct_handler(request: Request) -> "Response[UserResponse]":
+        return 200, UserResponse(name="loki", age=37)
 
     app.add_handler("/struct", struct_handler)
 

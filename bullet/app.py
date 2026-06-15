@@ -1,10 +1,13 @@
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, TYPE_CHECKING
 
 import msgspec
 
 from bullet._http import Request
 from bullet._routing import Handler, validate_handler
 from bullet._types import HandlerFunc
+
+if TYPE_CHECKING:
+    from bullet import Response
 
 _BODYLESS = frozenset({"GET", "HEAD", "OPTIONS", "DELETE"})
 _CT_JSON = (b"content-type", b"application/json; charset=utf-8")
@@ -14,9 +17,19 @@ class BulletApp:
     def __init__(self):
         self._static: dict[str, Handler] = {}
         self._dynamic: list[Handler] = []
+        self.exceptions_handlers: dict[
+            type[Exception] | int, Callable[..., Awaitable["Response"]]
+        ] = {}
+
+    def add_exception_handler(
+        self,
+        exc_class_or_status_code: type[Exception] | int,
+        handler: Callable[..., Awaitable["Response"]],
+    ):
+        self.exceptions_handlers[exc_class_or_status_code] = handler
 
     def add_handler(
-        self, route: str, handler: Callable[..., Awaitable[str | dict | msgspec.Struct]]
+        self, route: str, handler: Callable[..., Awaitable["Response"]]
     ) -> None:
         validate_handler(route, handler=handler)
         h = Handler(route=route, handler=handler)
@@ -61,15 +74,30 @@ class BulletApp:
 
         handler = self._static.get(path)
         if handler is not None:
-            status, response_body = await handler.execute(request)
-            await _send_json(send, status, response_body)
-            return
+            try:
+                status, response_body = await handler.execute(request)
+
+            except Exception as exc:
+                if exc_handler := self.exceptions_handlers.get(type(exc), None):
+                    status, response_body = await exc_handler(request, exc)
+                    await _send_json(send, status, response_body)
+                return
+            else:
+                await _send_json(send, status, response_body)
+                return
 
         for handler in self._dynamic:
             params = handler.match(path)
             if params is not None:
-                status, response_body = await handler.execute(request, params)
-                await _send_json(send, status, response_body)
+                try:
+                    status, response_body = await handler.execute(request, params)
+                except Exception as exc:
+                    if exc_handler := self.exceptions_handlers.get(type(exc), None):
+                        status, response_body = await exc_handler(request, exc)
+                        await _send_json(send, status, response_body)
+                        return
+                else:
+                    await _send_json(send, status, response_body)
                 return
 
         await _send_json(send, 404, {"error": "Not found"})

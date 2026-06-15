@@ -1,9 +1,13 @@
 import json
 import pytest
 from msgspec import Struct
+from typing import TYPE_CHECKING
 
 from bullet import BulletApp, Body, Path, Query, Request
 from bullet.testclient import TestClient
+
+if TYPE_CHECKING:
+    from bullet import Response
 
 
 # --- shared structs ---
@@ -34,8 +38,8 @@ class CreateUser(Struct):
 def test_query_decoded_with_coercion() -> None:
     app = BulletApp()
 
-    async def search(request: Request, query: Query[SearchQuery]) -> dict:
-        return {"q": query.q, "limit": query.limit}
+    async def search(request: Request, query: Query[SearchQuery]) -> "Response[dict]":
+        return 200, {"q": query.q, "limit": query.limit}
 
     app.add_handler("/search", search)
 
@@ -48,8 +52,8 @@ def test_query_decoded_with_coercion() -> None:
 def test_query_default_applied_when_param_omitted() -> None:
     app = BulletApp()
 
-    async def search(request: Request, query: Query[SearchQuery]) -> dict:
-        return {"q": query.q, "limit": query.limit}
+    async def search(request: Request, query: Query[SearchQuery]) -> "Response[dict]":
+        return 200, {"q": query.q, "limit": query.limit}
 
     app.add_handler("/search", search)
 
@@ -62,8 +66,8 @@ def test_query_default_applied_when_param_omitted() -> None:
 def test_query_400_on_bad_type() -> None:
     app = BulletApp()
 
-    async def search(request: Request, query: Query[SearchQuery]) -> dict:
-        return {}
+    async def search(request: Request, query: Query[SearchQuery]) -> "Response[dict]":
+        return 200, {}
 
     app.add_handler("/search", search)
 
@@ -76,8 +80,8 @@ def test_query_400_on_bad_type() -> None:
 def test_query_400_on_missing_required_field() -> None:
     app = BulletApp()
 
-    async def search(request: Request, query: Query[SearchQuery]) -> dict:
-        return {}
+    async def search(request: Request, query: Query[SearchQuery]) -> "Response[dict]":
+        return 200, {}
 
     app.add_handler("/search", search)
 
@@ -93,8 +97,8 @@ def test_query_400_on_missing_required_field() -> None:
 def test_body_decoded_from_json() -> None:
     app = BulletApp()
 
-    async def create(request: Request, body: Body[CreateUser]) -> dict:
-        return {"name": body.name, "age": body.age}
+    async def create(request: Request, body: Body[CreateUser]) -> "Response[dict]":
+        return 200, {"name": body.name, "age": body.age}
 
     app.add_handler("/users", create)
 
@@ -109,8 +113,8 @@ def test_body_decoded_from_json() -> None:
 def test_body_400_on_invalid_json() -> None:
     app = BulletApp()
 
-    async def create(request: Request, body: Body[CreateUser]) -> dict:
-        return {}
+    async def create(request: Request, body: Body[CreateUser]) -> "Response[dict]":
+        return 200, {}
 
     app.add_handler("/users", create)
 
@@ -123,8 +127,8 @@ def test_body_400_on_invalid_json() -> None:
 def test_body_400_on_missing_field() -> None:
     app = BulletApp()
 
-    async def create(request: Request, body: Body[CreateUser]) -> dict:
-        return {}
+    async def create(request: Request, body: Body[CreateUser]) -> "Response[dict]":
+        return 200, {}
 
     app.add_handler("/users", create)
 
@@ -140,8 +144,8 @@ def test_body_400_on_missing_field() -> None:
 def test_path_single_param() -> None:
     app = BulletApp()
 
-    async def get_user(request: Request, path: Path[UserPath]) -> dict:
-        return {"user_id": path.user_id}
+    async def get_user(request: Request, path: Path[UserPath]) -> "Response[dict]":
+        return 200, {"user_id": path.user_id}
 
     app.add_handler("/users/<user_id>", get_user)
 
@@ -154,8 +158,8 @@ def test_path_single_param() -> None:
 def test_path_multi_param() -> None:
     app = BulletApp()
 
-    async def get_post(request: Request, path: Path[PostPath]) -> dict:
-        return {"user_id": path.user_id, "post_id": path.post_id}
+    async def get_post(request: Request, path: Path[PostPath]) -> "Response[dict]":
+        return 200, {"user_id": path.user_id, "post_id": path.post_id}
 
     app.add_handler("/users/<user_id>/posts/<post_id>", get_post)
 
@@ -168,8 +172,8 @@ def test_path_multi_param() -> None:
 def test_path_400_on_bad_type() -> None:
     app = BulletApp()
 
-    async def get_user(request: Request, path: Path[UserPath]) -> dict:
-        return {}
+    async def get_user(request: Request, path: Path[UserPath]) -> "Response[dict]":
+        return 200, {}
 
     app.add_handler("/users/<user_id>", get_user)
 
@@ -189,8 +193,8 @@ def test_combined_path_and_query() -> None:
         request: Request,
         path: Path[UserPath],
         query: Query[SearchQuery],
-    ) -> dict:
-        return {"user_id": path.user_id, "q": query.q, "limit": query.limit}
+    ) -> "Response[dict]":
+        return 200, {"user_id": path.user_id, "q": query.q, "limit": query.limit}
 
     app.add_handler("/users/<user_id>/posts", list_posts)
 
@@ -206,8 +210,8 @@ def test_combined_path_and_query() -> None:
 def test_path_non_struct_raises() -> None:
     app = BulletApp()
 
-    async def bad(request: Request, path: Path[int]) -> dict:
-        return {}
+    async def bad(request: Request, path: Path[int]) -> "Response[dict]":
+        return 200, {}
 
     with pytest.raises(ValueError, match="msgspec.Struct"):
         app.add_handler("/x/<x>", bad)
@@ -216,8 +220,8 @@ def test_path_non_struct_raises() -> None:
 def test_route_param_not_covered_raises() -> None:
     app = BulletApp()
 
-    async def bad(request: Request) -> dict:
-        return {}
+    async def bad(request: Request) -> "Response[dict]":
+        return 200, {}
 
     with pytest.raises(ValueError, match="not covered"):
         app.add_handler("/items/<id>", bad)
@@ -226,8 +230,8 @@ def test_route_param_not_covered_raises() -> None:
 def test_bare_route_param_coerced() -> None:
     app = BulletApp()
 
-    async def get_user(request: Request, user_id: int) -> dict:
-        return {"user_id": user_id}
+    async def get_user(request: Request, user_id: int) -> "Response[dict]":
+        return 200, {"user_id": user_id}
 
     app.add_handler("/users/<user_id>", get_user)
 
