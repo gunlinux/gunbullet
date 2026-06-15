@@ -1,11 +1,22 @@
 import inspect
 import re
-from typing import Annotated, Any, Awaitable, Callable, get_args, get_origin
+from typing import (
+    Annotated,
+    Any,
+    Awaitable,
+    Callable,
+    get_args,
+    get_origin,
+    TYPE_CHECKING,
+)
 
 import msgspec
 
 from bullet._http import Request
 from bullet.params import _BodyMarker, _PathMarker, _QueryMarker
+
+if TYPE_CHECKING:
+    from bullet import Response
 
 _param_re = re.compile(r"<([\w]+)>")
 
@@ -21,9 +32,7 @@ def _parse_marker(annotation: Any) -> tuple[type, type] | None:
     return None
 
 
-def validate_handler(
-    path: str, handler: Callable[..., Awaitable[str | dict | msgspec.Struct]]
-) -> None:
+def validate_handler(path: str, handler: Callable[..., Awaitable["Response"]]) -> None:
     params = set(_param_re.findall(path))
     sig = inspect.signature(handler)
     for name, p in sig.parameters.items():
@@ -65,9 +74,7 @@ def _compile_route(pattern: str) -> re.Pattern[str]:
 
 
 class Handler:
-    def __init__(
-        self, route: str, handler: Callable[..., Awaitable[str | dict | msgspec.Struct]]
-    ):
+    def __init__(self, route: str, handler: Callable[..., Awaitable["Response"]]):
         self.handler = handler
         self.path = route
         self.pattern = _compile_route(route)
@@ -93,7 +100,7 @@ class Handler:
         self,
         request: Request,
         params: dict[str, str] | None = None,
-    ) -> tuple[int, str | dict | msgspec.Struct]:
+    ) -> "Response":
         kwargs: dict[str, Any] = {}
         try:
             for name, source, typ in self._extractors:
@@ -110,4 +117,4 @@ class Handler:
                 kwargs[name] = msgspec.convert(raw, type=typ, strict=False)
         except msgspec.DecodeError as exc:  # ValidationError subclasses DecodeError
             return 400, {"error": str(exc)}
-        return 200, await self.handler(request, **kwargs)
+        return await self.handler(request, **kwargs)
