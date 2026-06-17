@@ -1,7 +1,45 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs as _parse_qs
 
 import msgspec
+
+if TYPE_CHECKING:
+    from bullet.app import BulletApp
+
+
+class State:
+    """A simple attribute-access namespace backed by a dict, FastAPI-style.
+
+    Used for ``app.state`` to stash arbitrary objects (db pools, clients, ...)
+    that should live for the whole application and be reachable from handlers
+    via ``request.app.state``.
+    """
+
+    __slots__ = ("_state",)
+
+    def __init__(self, state: dict[str, Any] | None = None):
+        object.__setattr__(self, "_state", state if state is not None else {})
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self._state[name]
+        except KeyError:
+            raise AttributeError(f"state has no attribute {name!r}") from None
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        self._state[name] = value
+
+    def __delattr__(self, name: str) -> None:
+        try:
+            del self._state[name]
+        except KeyError:
+            raise AttributeError(f"state has no attribute {name!r}") from None
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._state
+
+    def __repr__(self) -> str:
+        return f"State({self._state!r})"
 
 
 class Headers:
@@ -33,6 +71,7 @@ class Request:
         "method",
         "path",
         "body",
+        "app",
         "state",
         "_raw_headers",
         "_query_string",
@@ -41,10 +80,17 @@ class Request:
         "_cookies",
     )
 
-    def __init__(self, scope: dict[str, Any], body: bytes = b""):
+    def __init__(
+        self,
+        scope: dict[str, Any],
+        body: bytes = b"",
+        *,
+        app: "BulletApp",
+    ):
         self.method: str = scope.get("method", "").upper()
         self.path: str = scope.get("path", "")
         self.body: bytes = body
+        self.app: "BulletApp" = app
         s = scope.get("state")
         self.state: dict[str, Any] = s if s is not None else {}
         self._raw_headers: list[tuple[bytes, bytes]] = scope.get("headers", [])

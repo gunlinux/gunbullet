@@ -12,7 +12,7 @@ from typing import (
 
 import msgspec
 
-from bullet._http import Request
+from bullet._http import Request, State
 from bullet._routing import Handler, validate_handler
 from bullet._types import HandlerFunc
 
@@ -40,6 +40,7 @@ def _as_lifespan(func: Any) -> Lifespan:
 
 class BulletApp:
     def __init__(self, lifespan: Optional[Lifespan] = None):
+        self.state = State()
         self._static: dict[str, Handler] = {}
         self._dynamic: list[Handler] = []
         self.exceptions_handlers: dict[
@@ -129,7 +130,7 @@ class BulletApp:
                     break
 
         path = scope["path"]
-        request = Request(scope, body)
+        request = Request(scope, body, app=self)
 
         handler = self._static.get(path)
         if handler is not None:
