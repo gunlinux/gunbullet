@@ -1,7 +1,7 @@
 import pytest
 
-from bullet import BulletApp, Request, State
-from bullet.testclient import TestClient
+from gunbullet import GunbulletApp, Request, State
+from gunbullet.testclient import TestClient
 
 
 def test_state_attribute_access() -> None:
@@ -27,12 +27,12 @@ def test_state_delete_attribute() -> None:
 
 
 def test_app_has_state_by_default() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
     assert isinstance(app.state, State)
 
 
 def test_app_state_reaches_handler_via_request() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
     app.state.greeting = "hello"
 
     async def index(request: Request) -> dict:
@@ -47,10 +47,10 @@ def test_app_state_reaches_handler_via_request() -> None:
 
 
 def test_lifespan_can_populate_app_state() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     @app.lifespan
-    async def lifespan(app: BulletApp):
+    async def lifespan(app: GunbulletApp):
         app.state.db = "connected"  # set on global state at startup
         yield
         app.state.db = "closed"  # shutdown
@@ -69,7 +69,7 @@ def test_lifespan_can_populate_app_state() -> None:
 
 
 def test_app_state_is_global_across_requests() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
     app.state.counter = 0
 
     async def bump(request: Request) -> dict:
@@ -86,7 +86,7 @@ def test_app_state_is_global_across_requests() -> None:
 
 
 def test_request_app_is_the_app_instance() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def index(request: Request) -> dict:
         return {"same": request.app is app}

@@ -4,7 +4,7 @@ from urllib.parse import parse_qs as _parse_qs
 import msgspec
 
 if TYPE_CHECKING:
-    from bullet.app import BulletApp
+    from gunbullet.app import GunbulletApp
 
 
 class State:
@@ -85,12 +85,12 @@ class Request:
         scope: dict[str, Any],
         body: bytes = b"",
         *,
-        app: "BulletApp",
+        app: "GunbulletApp",
     ):
         self.method: str = scope.get("method", "").upper()
         self.path: str = scope.get("path", "")
         self.body: bytes = body
-        self.app: "BulletApp" = app
+        self.app: "GunbulletApp" = app
         s = scope.get("state")
         self.state: dict[str, Any] = s if s is not None else {}
         self._raw_headers: list[tuple[bytes, bytes]] = scope.get("headers", [])

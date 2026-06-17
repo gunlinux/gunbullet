@@ -1,15 +1,15 @@
 from contextlib import asynccontextmanager
 
-from bullet import BulletApp, Request
-from bullet.testclient import TestClient
+from gunbullet import GunbulletApp, Request
+from gunbullet.testclient import TestClient
 
 
 def test_lifespan_decorator_runs_startup_then_shutdown() -> None:
     events: list[str] = []
-    app = BulletApp()
+    app = GunbulletApp()
 
     @app.lifespan
-    async def lifespan(app: BulletApp):
+    async def lifespan(app: GunbulletApp):
         events.append("startup")
         yield
         events.append("shutdown")
@@ -29,10 +29,10 @@ def test_lifespan_decorator_runs_startup_then_shutdown() -> None:
 
 
 def test_lifespan_yielded_state_reaches_request() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     @app.lifespan
-    async def lifespan(app: BulletApp):
+    async def lifespan(app: GunbulletApp):
         yield {"db": "connected"}
 
     async def index(request: Request) -> dict:
@@ -50,12 +50,12 @@ def test_lifespan_via_constructor_fastapi_style() -> None:
     events: list[str] = []
 
     @asynccontextmanager
-    async def lifespan(app: BulletApp):
+    async def lifespan(app: GunbulletApp):
         events.append("up")
         yield
         events.append("down")
 
-    app = BulletApp(lifespan=lifespan)
+    app = GunbulletApp(lifespan=lifespan)
 
     async def index(request: Request) -> dict:
         return {}
@@ -69,7 +69,7 @@ def test_lifespan_via_constructor_fastapi_style() -> None:
 
 
 def test_no_lifespan_still_serves_requests() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def index(request: Request) -> dict:
         return {"ok": True}

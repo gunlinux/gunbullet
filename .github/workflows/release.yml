@@ -1,0 +1,91 @@
+name: Release
+
+# Publishes to PyPI only when BOTH conditions are met:
+#   1. The CI workflow passes on main, AND
+#   2. The commit that CI ran on carries a v* tag.
+# This guarantees the test suite is green before anything reaches PyPI.
+#
+# Setup required once before the first release:
+#   1. Create the PyPI project's trusted publisher pointing at this repo +
+#      this workflow file (https://docs.pypi.org/trusted-publishers/).
+#   2. Create a GitHub Environment named "pypi" (Settings > Environments).
+#
+# workflow_dispatch builds the sdist/wheel for the current HEAD as a dry run
+# (no tag required, the publish step is always skipped).
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: Detect version tag on CI commit
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      github.event.workflow_run.conclusion == 'success'
+    outputs:
+      tag: ${{ steps.find.outputs.tag }}
+      sha: ${{ steps.find.outputs.sha }}
+    steps:
+      - name: Find v* tag on this commit
+        id: find
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          # /tags gives peeled commit SHAs (annotated-tag safe).
+          # Pipe into jq so --arg works; gh api --jq takes only one string arg.
+          TAG=$(gh api "repos/${{ github.repository }}/tags" \
+            | jq -r --arg sha "$SHA" \
+            '[.[] | select(.commit.sha == $sha and (.name | startswith("v")))] |
+             if length > 0 then .[0].name else "" end')
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "Detected tag: ${TAG:-<none>} on ${SHA}"
+
+  build:
+    name: Build sdist + wheel
+    needs: detect
+    if: >-
+      needs.detect.outputs.tag != '' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect.outputs.sha }}
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Build
+        run: uv build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [detect, build]
+    if: needs.detect.outputs.tag != ''
+    environment: pypi
+    permissions:
+      id-token: write # trusted publishing; no API token needed
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1

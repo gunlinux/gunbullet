@@ -12,11 +12,11 @@ from typing import (
 
 import msgspec
 
-from bullet._http import Request
-from bullet.params import _BodyMarker, _PathMarker, _QueryMarker
+from gunbullet._http import Request
+from gunbullet.params import _BodyMarker, _PathMarker, _QueryMarker
 
 if TYPE_CHECKING:
-    from bullet._types import HandlerReturn
+    from gunbullet._types import HandlerReturn
 
 _param_re = re.compile(r"<([\w]+)>")
 

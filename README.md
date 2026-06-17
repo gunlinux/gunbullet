@@ -12,10 +12,10 @@
 - [x] Микрофреймворк
 
 
-# Bullet
+# Gunbullet
 
 A small async web micro-framework built directly on the raw ASGI protocol.
-No Flask, Django, or FastAPI under the hood — Bullet implements routing,
+No Flask, Django, or FastAPI under the hood — Gunbullet implements routing,
 request parsing, parameter extraction, validation, and a test client by hand.
 [`msgspec`](https://jcristharif.com/msgspec/) is the only
 serialization/validation dependency.
@@ -40,13 +40,13 @@ Always run from the repo root — imports assume that working directory.
 
 ## Quickstart
 
-A Bullet app is an ASGI callable. Create one, register handlers, and hand it
+A Gunbullet app is an ASGI callable. Create one, register handlers, and hand it
 to an ASGI server.
 
 ```python
 # app/__init__.py
 from msgspec import Struct
-from bullet import BulletApp, Request
+from gunbullet import GunbulletApp, Request
 
 
 class UserResponse(Struct):
@@ -54,8 +54,8 @@ class UserResponse(Struct):
     age: int
 
 
-def create_app_asgi() -> BulletApp:
-    app = BulletApp()
+def create_app_asgi() -> GunbulletApp:
+    app = GunbulletApp()
 
     @app.get("/")
     async def index(request: Request) -> UserResponse:
@@ -155,10 +155,10 @@ naming a route parameter directly. All extraction uses `msgspec`, so values are
 validated and coerced. Any validation/decoding error during extraction returns
 **400** `{"error": ...}`.
 
-Markers are imported from `bullet`:
+Markers are imported from `gunbullet`:
 
 ```python
-from bullet import Query, Body, Path
+from gunbullet import Query, Body, Path
 ```
 
 ### Bare path params
@@ -218,7 +218,7 @@ async def create_user(request: Request, body: Body[NewUser]) -> dict:
 
 ### Registration-time validation
 
-When a handler is registered, Bullet checks that every `<route_param>` in the
+When a handler is registered, Gunbullet checks that every `<route_param>` in the
 path is covered by a handler argument or a `Path` struct field. If not, it
 raises `ValueError` **at registration time** (fail-fast), not on request:
 
@@ -246,7 +246,7 @@ cached.
 | `request.cookies`         | `dict[str, str]` parsed from the `Cookie` header        |
 | `request.json(type=dict)` | Decode the body via `msgspec`, optionally into a struct |
 | `request.state`           | Per-request view of the lifespan state dict             |
-| `request.app`             | The owning `BulletApp` (e.g. `request.app.state`)       |
+| `request.app`             | The owning `GunbulletApp` (e.g. `request.app.state`)       |
 
 ```python
 @app.get("/whoami")
@@ -285,10 +285,10 @@ A plain async generator is auto-wrapped with
 as-is. You can also pass it to the constructor:
 
 ```python
-app = BulletApp(lifespan=lifespan)
+app = GunbulletApp(lifespan=lifespan)
 ```
 
-If startup raises, Bullet reports `lifespan.startup.failed` with the exception
+If startup raises, Gunbullet reports `lifespan.startup.failed` with the exception
 message and the server does not start.
 
 ---
@@ -314,12 +314,12 @@ async def version(request: Request) -> dict:
 
 ## Testing
 
-`bullet.testclient.TestClient` is a **synchronous** client (built on `httpx` +
+`gunbullet.testclient.TestClient` is a **synchronous** client (built on `httpx` +
 `anyio`) that drives the app in-process — no network. It subclasses
 `httpx.Client`, so it exposes `.get`, `.post`, `.put`, `.patch`, `.delete`, etc.
 
 ```python
-from bullet.testclient import TestClient
+from gunbullet.testclient import TestClient
 
 def test_index(app):
     with TestClient(app) as client:
@@ -353,9 +353,9 @@ uv run pytest tests/test_methods.py # a single file
 
 ```
 main.py            entry point: app_asgi = create_app_asgi()  (served by uvicorn)
-app/__init__.py    create_app_asgi() — wires up a BulletApp with example routes
-bullet/            the framework
-  app.py           BulletApp — the ASGI callable, routing, lifespan
+app/__init__.py    create_app_asgi() — wires up a GunbulletApp with example routes
+gunbullet/            the framework
+  app.py           GunbulletApp — the ASGI callable, routing, lifespan
   _routing.py      Handler + registration-time validation
   _http.py         Request, Headers, State
   params.py        Query / Body / Path markers

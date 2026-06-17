@@ -3,11 +3,11 @@ import pytest
 from msgspec import Struct
 from typing import TYPE_CHECKING
 
-from bullet import BulletApp, Body, Path, Query, Request
-from bullet.testclient import TestClient
+from gunbullet import GunbulletApp, Body, Path, Query, Request
+from gunbullet.testclient import TestClient
 
 if TYPE_CHECKING:
-    from bullet import Response
+    from gunbullet import Response
 
 
 # --- shared structs ---
@@ -36,7 +36,7 @@ class CreateUser(Struct):
 
 
 def test_query_decoded_with_coercion() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def search(request: Request, query: Query[SearchQuery]) -> "Response[dict]":
         return 200, {"q": query.q, "limit": query.limit}
@@ -50,7 +50,7 @@ def test_query_decoded_with_coercion() -> None:
 
 
 def test_query_default_applied_when_param_omitted() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def search(request: Request, query: Query[SearchQuery]) -> "Response[dict]":
         return 200, {"q": query.q, "limit": query.limit}
@@ -64,7 +64,7 @@ def test_query_default_applied_when_param_omitted() -> None:
 
 
 def test_query_400_on_bad_type() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def search(request: Request, query: Query[SearchQuery]) -> "Response[dict]":
         return 200, {}
@@ -78,7 +78,7 @@ def test_query_400_on_bad_type() -> None:
 
 
 def test_query_400_on_missing_required_field() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def search(request: Request, query: Query[SearchQuery]) -> "Response[dict]":
         return 200, {}
@@ -95,7 +95,7 @@ def test_query_400_on_missing_required_field() -> None:
 
 
 def test_body_decoded_from_json() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def create(request: Request, body: Body[CreateUser]) -> "Response[dict]":
         return 200, {"name": body.name, "age": body.age}
@@ -111,7 +111,7 @@ def test_body_decoded_from_json() -> None:
 
 
 def test_body_400_on_invalid_json() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def create(request: Request, body: Body[CreateUser]) -> "Response[dict]":
         return 200, {}
@@ -125,7 +125,7 @@ def test_body_400_on_invalid_json() -> None:
 
 
 def test_body_400_on_missing_field() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def create(request: Request, body: Body[CreateUser]) -> "Response[dict]":
         return 200, {}
@@ -142,7 +142,7 @@ def test_body_400_on_missing_field() -> None:
 
 
 def test_path_single_param() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def get_user(request: Request, path: Path[UserPath]) -> "Response[dict]":
         return 200, {"user_id": path.user_id}
@@ -156,7 +156,7 @@ def test_path_single_param() -> None:
 
 
 def test_path_multi_param() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def get_post(request: Request, path: Path[PostPath]) -> "Response[dict]":
         return 200, {"user_id": path.user_id, "post_id": path.post_id}
@@ -170,7 +170,7 @@ def test_path_multi_param() -> None:
 
 
 def test_path_400_on_bad_type() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def get_user(request: Request, path: Path[UserPath]) -> "Response[dict]":
         return 200, {}
@@ -187,7 +187,7 @@ def test_path_400_on_bad_type() -> None:
 
 
 def test_combined_path_and_query() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def list_posts(
         request: Request,
@@ -208,7 +208,7 @@ def test_combined_path_and_query() -> None:
 
 
 def test_path_non_struct_raises() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def bad(request: Request, path: Path[int]) -> "Response[dict]":
         return 200, {}
@@ -218,7 +218,7 @@ def test_path_non_struct_raises() -> None:
 
 
 def test_route_param_not_covered_raises() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def bad(request: Request) -> "Response[dict]":
         return 200, {}
@@ -228,7 +228,7 @@ def test_route_param_not_covered_raises() -> None:
 
 
 def test_bare_route_param_coerced() -> None:
-    app = BulletApp()
+    app = GunbulletApp()
 
     async def get_user(request: Request, user_id: int) -> "Response[dict]":
         return 200, {"user_id": user_id}

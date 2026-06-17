@@ -1,6 +1,6 @@
 from msgspec import Struct
 
-from bullet import BulletApp, Request, Response
+from gunbullet import GunbulletApp, Request, Response
 
 
 base_d = {"name": "loki", "age": 37}
@@ -27,7 +27,7 @@ async def _domain_error_handler(_: Request, exc: Exception) -> Response:
 
 
 def create_app_asgi():
-    app = BulletApp()
+    app = GunbulletApp()
 
     @app.route("/")
     async def index_page(_: Request) -> Response[UserResponse]:

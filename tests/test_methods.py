@@ -1,5 +1,5 @@
-from bullet import BulletApp, Path, Request
-from bullet.testclient import TestClient
+from gunbullet import GunbulletApp, Path, Request
+from gunbullet.testclient import TestClient
 from msgspec import Struct
 
 
@@ -7,7 +7,7 @@ class AgePath(Struct):
     age: int
 
 
-def test_same_path_dispatches_by_method(app: BulletApp) -> None:
+def test_same_path_dispatches_by_method(app: GunbulletApp) -> None:
     @app.get("/items")
     async def list_items(request: Request) -> dict:
         return {"verb": "get"}
@@ -21,7 +21,7 @@ def test_same_path_dispatches_by_method(app: BulletApp) -> None:
         assert client.post("/items").json() == {"verb": "post"}
 
 
-def test_wrong_method_returns_405(app: BulletApp) -> None:
+def test_wrong_method_returns_405(app: GunbulletApp) -> None:
     @app.get("/only-get")
     async def only_get(request: Request) -> dict:
         return {"ok": True}
@@ -32,7 +32,7 @@ def test_wrong_method_returns_405(app: BulletApp) -> None:
         assert response.json() == {"error": "Method not allowed"}
 
 
-def test_unknown_path_still_returns_404(app: BulletApp) -> None:
+def test_unknown_path_still_returns_404(app: GunbulletApp) -> None:
     @app.get("/known")
     async def known(request: Request) -> dict:
         return {"ok": True}
@@ -43,7 +43,7 @@ def test_unknown_path_still_returns_404(app: BulletApp) -> None:
         assert response.json() == {"error": "Not found"}
 
 
-def test_route_without_methods_defaults_to_all(app: BulletApp) -> None:
+def test_route_without_methods_defaults_to_all(app: GunbulletApp) -> None:
     @app.route("/any")
     async def any_verb(request: Request) -> dict:
         return {"method": request.method}
@@ -54,7 +54,7 @@ def test_route_without_methods_defaults_to_all(app: BulletApp) -> None:
         assert client.delete("/any").json() == {"method": "DELETE"}
 
 
-def test_dynamic_route_restricted_by_method(app: BulletApp) -> None:
+def test_dynamic_route_restricted_by_method(app: GunbulletApp) -> None:
     @app.get("/widgets/<age>")
     async def get_widget(request: Request, path: Path[AgePath]) -> dict:
         return {"wid": path.age}
@@ -64,7 +64,7 @@ def test_dynamic_route_restricted_by_method(app: BulletApp) -> None:
         assert client.post("/widgets/42").status_code == 405
 
 
-def test_verb_shortcut_extracts_path_params(app: BulletApp) -> None:
+def test_verb_shortcut_extracts_path_params(app: GunbulletApp) -> None:
     @app.post("/score/<age>")
     async def set_score(request: Request, age: int) -> dict:
         return {"age": age, "doubled": age * 2}

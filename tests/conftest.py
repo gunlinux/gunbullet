@@ -4,11 +4,11 @@ from typing import Generator, TYPE_CHECKING, Any
 import pytest
 from msgspec import Struct
 
-from bullet import BulletApp, Path, Request
+from gunbullet import GunbulletApp, Path, Request
 
 if TYPE_CHECKING:
-    from bullet import Response
-from bullet.testclient import TestClient
+    from gunbullet import Response
+from gunbullet.testclient import TestClient
 from tests.types import TestClientFactory
 
 
@@ -17,8 +17,8 @@ class AgePath(Struct):
 
 
 @pytest.fixture
-def app() -> BulletApp:
-    app = BulletApp()
+def app() -> GunbulletApp:
+    app = GunbulletApp()
 
     async def index_page(request: Request) -> "Response[Any]":
         return 200, {"name": "loki", "age": 37}
@@ -38,7 +38,7 @@ def test_client_factory() -> TestClientFactory:
 
 @pytest.fixture
 def client(
-    app: BulletApp, test_client_factory: TestClientFactory
+    app: GunbulletApp, test_client_factory: TestClientFactory
 ) -> Generator[TestClient, None, None]:
     with test_client_factory(app) as client:
         yield client

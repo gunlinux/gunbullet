@@ -13,17 +13,17 @@ from typing import (
 
 import msgspec
 
-from bullet._http import Request, State
-from bullet._routing import Handler, validate_handler
-from bullet._types import HandlerFunc
+from gunbullet._http import Request, State
+from gunbullet._routing import Handler, validate_handler
+from gunbullet._types import HandlerFunc
 
 if TYPE_CHECKING:
-    from bullet._types import HandlerReturn
+    from gunbullet._types import HandlerReturn
 
 _BODYLESS = frozenset({"GET", "HEAD", "OPTIONS", "DELETE"})
 _CT_JSON = (b"content-type", b"application/json; charset=utf-8")
 
-Lifespan = Callable[["BulletApp"], AsyncContextManager[Any]]
+Lifespan = Callable[["GunbulletApp"], AsyncContextManager[Any]]
 _LifespanFunc = TypeVar("_LifespanFunc")
 
 
@@ -39,7 +39,7 @@ def _as_lifespan(func: Any) -> Lifespan:
     return func
 
 
-class BulletApp:
+class GunbulletApp:
     def __init__(self, lifespan: Optional[Lifespan] = None):
         self.state = State()
         self._static: dict[str, list[Handler]] = {}

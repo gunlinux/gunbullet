@@ -2,15 +2,15 @@ from typing import TYPE_CHECKING, Protocol
 
 import httpx2 as httpx
 
-from bullet.testclient import TestClient
-from bullet import BulletApp
+from gunbullet.testclient import TestClient
+from gunbullet import GunbulletApp
 
 if TYPE_CHECKING:
 
     class TestClientFactory(Protocol):  # pragma: no cover
         def __call__(
             self,
-            app: BulletApp,
+            app: GunbulletApp,
             base_url: str = "http://testserver",
             raise_server_exceptions: bool = True,
             root_path: str = "",

@@ -10,7 +10,7 @@ import httpx2 as httpx
 from anyio.abc import BlockingPortal
 from anyio.streams.stapled import StapledObjectStream
 
-from bullet import BulletApp
+from gunbullet import GunbulletApp
 
 
 class _AsyncBackend(TypedDict):
@@ -30,7 +30,7 @@ class _ASGITransport(httpx.BaseTransport):
 
     def __init__(
         self,
-        app: BulletApp,
+        app: GunbulletApp,
         portal_factory: Callable[
             [], "contextlib.AbstractContextManager[BlockingPortal]"
         ],
@@ -115,7 +115,7 @@ class _ASGITransport(httpx.BaseTransport):
 
 
 class TestClient(httpx.Client):
-    """Synchronous test client that drives a BulletApp over the ASGI protocol.
+    """Synchronous test client that drives a GunbulletApp over the ASGI protocol.
 
     HTTP requests are routed into the app instead of out to the network. Using the
     client as a context manager additionally runs the app's ``lifespan`` startup /
@@ -127,7 +127,7 @@ class TestClient(httpx.Client):
 
     def __init__(
         self,
-        app: BulletApp,
+        app: GunbulletApp,
         base_url: str = "http://testserver",
         raise_server_exceptions: bool = True,
         root_path: str = "",
