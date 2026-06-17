@@ -8,6 +8,7 @@ from typing import (
     Awaitable,
     Callable,
     TYPE_CHECKING,
+    Iterable,
 )
 
 import msgspec
@@ -41,7 +42,7 @@ def _as_lifespan(func: Any) -> Lifespan:
 class BulletApp:
     def __init__(self, lifespan: Optional[Lifespan] = None):
         self.state = State()
-        self._static: dict[str, Handler] = {}
+        self._static: dict[str, list[Handler]] = {}
         self._dynamic: list[Handler] = []
         self.exceptions_handlers: dict[
             type[Exception] | int, Callable[..., Awaitable["Response"]]
@@ -59,21 +60,42 @@ class BulletApp:
         self.exceptions_handlers[exc_class_or_status_code] = handler
 
     def add_handler(
-        self, route: str, handler: Callable[..., Awaitable["Response"]]
+        self,
+        route: str,
+        handler: Callable[..., Awaitable["Response"]],
+        methods: Iterable[str] | None = None,
     ) -> None:
         validate_handler(route, handler=handler)
-        h = Handler(route=route, handler=handler)
+        norm = None if methods is None else frozenset(m.upper() for m in methods)
+        h = Handler(route=route, handler=handler, methods=norm)
         if "<" not in route:
-            self._static[route] = h
+            self._static.setdefault(route, []).append(h)
         else:
             self._dynamic.append(h)
 
-    def route(self, path: str) -> Callable[[HandlerFunc], HandlerFunc]:
+    def route(
+        self, path: str, methods: Iterable[str] | None = None
+    ) -> Callable[[HandlerFunc], HandlerFunc]:
         def decorator(handler: HandlerFunc) -> HandlerFunc:
-            self.add_handler(path, handler)
+            self.add_handler(path, handler, methods=methods)
             return handler
 
         return decorator
+
+    def get(self, path: str) -> Callable[[HandlerFunc], HandlerFunc]:
+        return self.route(path, methods=["GET"])
+
+    def post(self, path: str) -> Callable[[HandlerFunc], HandlerFunc]:
+        return self.route(path, methods=["POST"])
+
+    def put(self, path: str) -> Callable[[HandlerFunc], HandlerFunc]:
+        return self.route(path, methods=["PUT"])
+
+    def patch(self, path: str) -> Callable[[HandlerFunc], HandlerFunc]:
+        return self.route(path, methods=["PATCH"])
+
+    def delete(self, path: str) -> Callable[[HandlerFunc], HandlerFunc]:
+        return self.route(path, methods=["DELETE"])
 
     def lifespan(self, func: _LifespanFunc) -> _LifespanFunc:
         """Register a startup/shutdown lifespan, FastAPI-style.
@@ -129,38 +151,29 @@ class BulletApp:
                 if not event.get("more_body", False):
                     break
 
+        method = scope.get("method", "GET").upper()
         path = scope["path"]
         request = Request(scope, body, app=self)
-
-        handler = self._static.get(path)
-        if handler is not None:
-            try:
-                status, response_body = await handler.execute(request)
-
-            except Exception as exc:
-                if exc_handler := self.exceptions_handlers.get(type(exc), None):
-                    status, response_body = await exc_handler(request, exc)
-                    await _send_json(send, status, response_body)
-                return
-            else:
-                await _send_json(send, status, response_body)
-                return
+        matched_wrong_method = False
 
         for handler in self._dynamic:
             params = handler.match(path)
-            if params is not None:
+            if params is not None and handler.allows(method):
                 try:
                     status, response_body = await handler.execute(request, params)
                 except Exception as exc:
                     if exc_handler := self.exceptions_handlers.get(type(exc), None):
                         status, response_body = await exc_handler(request, exc)
                         await _send_json(send, status, response_body)
-                        return
+                    return
                 else:
                     await _send_json(send, status, response_body)
-                return
+                matched_wrong_method = True
 
-        await _send_json(send, 404, {"error": "Not found"})
+        if matched_wrong_method:
+            await _send_json(send, 405, {"error": "Method not allowed"})
+        else:
+            await _send_json(send, 404, {"error": "Not found"})
 
 
 async def _send_json(send, status: int, body: str | dict | msgspec.Struct) -> None:

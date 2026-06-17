@@ -74,9 +74,15 @@ def _compile_route(pattern: str) -> re.Pattern[str]:
 
 
 class Handler:
-    def __init__(self, route: str, handler: Callable[..., Awaitable["Response"]]):
+    def __init__(
+        self,
+        route: str,
+        handler: Callable[..., Awaitable["Response"]],
+        methods: frozenset[str] | None = None,
+    ):
         self.handler = handler
         self.path = route
+        self.methods = methods
         self.pattern = _compile_route(route)
         self._extractors: list[tuple[str, type, type]] = []
         self._bare_path_params: list[tuple[str, type]] = []
@@ -89,6 +95,9 @@ class Handler:
                 self._extractors.append((name, *marker))
             elif name in route_params:
                 self._bare_path_params.append((name, p.annotation))
+
+    def allows(self, method: str) -> bool:
+        return self.methods is None or method in self.methods
 
     def match(self, path: str) -> dict[str, str] | None:
         m = self.pattern.match(path)
