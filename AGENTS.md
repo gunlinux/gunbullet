@@ -1,110 +1,86 @@
-# QWEN.md
+# CLAUDE.md
 
-## Project overview
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**lmao-server** — a from-scratch Python ASGI micro-framework called **bullet**, built directly against the raw ASGI protocol contract. No Flask, Django, FastAPI, or any third-party web framework. The point is learning how ASGI works at the wire level.
+## What this is
 
-The project is in active early development. The old learning code (raw WSGI/ASGI/RSGI implementations + schema comparison across pydantic/marshmallow/msgspec) has been removed; only `app/asgi.py` remains as a reference raw ASGI implementation.
+`lmao-server` is a learning project: a from-scratch async web micro-framework called **bullet**, built directly on the raw ASGI protocol (`__call__(scope, receive, send)`). No Flask/Django/FastAPI — the point is implementing routing, request parsing, param extraction, validation, and a test client by hand. `msgspec` is the only serialization/validation dependency that the framework itself uses.
 
-## Environment
+Python 3.13+, managed with [`uv`](https://docs.astral.sh/uv/) (`uv.lock` is checked in).
 
-- Python **3.12+** (see `.python-version`)
-- Package manager: [`uv`](https://docs.astral.sh/uv/) with `uv.lock` checked in
-- Virtual env: `.venv/`
+## Commands
 
 ```bash
-uv sync                    # install deps into .venv
-uv sync --dev              # install with dev deps (linters, pytest, etc.)
+uv sync --dev                       # install deps (incl. linters, pytest)
+make dev                            # uv sync --dev + run uvicorn main:app_asgi
+uv run uvicorn main:app_asgi        # run the dev server (from repo root)
+
+make check                          # lint + fix + types + test  (run before finishing)
+make lint                           # ruff check
+make fix                            # ruff check --fix && ruff format
+make types                          # pyright
+make test                           # pytest
+
+uv run pytest tests/test_params.py::test_query_decoded_with_coercion   # single test
 ```
 
-## Key commands (from `Makefile`)
-
-| Command | What it does |
-|---------|-------------|
-| `uv run uvicorn main:app_asgi` | Run the bullet app via uvicorn |
-| `make dev` | `uv sync --dev && uv run uvicorn main:app_asgi` |
-| `make check` | `make lint && make fix && make types && make test` |
-| `make lint` | `uv run ruff check` |
-| `make fix` | `uv run ruff check --fix && uv run ruff format` |
-| `make types` | `uv run pyright` |
-| `make test` | `uv run pytest` |
-
-**Always run servers from the repo root.** Path-dependent imports assume the working directory is `/Users/loki/work/lmao_server`.
+Always run from the repo root — imports assume that working directory.
 
 ## Architecture
 
 ```
-main.py              ← entry point: `from app import create_app_asgi`
-app/
-  __init__.py        ← `create_app_asgi()` — builds a BulletApp, registers routes
-  asgi.py            ← standalone raw ASGI `application(scope, receive, send)` for reference
-bullet/
-  __init__.py        ← the bullet micro-framework: BulletApp, Handler, Request
-debug.py             ← alternative uvicorn runner (async main)
-temp.py              ← throwaway test client (requests)
+main.py            entry point: app_asgi = create_app_asgi()  (served by uvicorn)
+app/__init__.py    create_app_asgi() — wires up a BulletApp with example routes
+bullet/            the framework (see below)
+tests/             pytest suite driving the app through bullet.testclient.TestClient
 ```
 
-### `main.py`
-Imports `create_app_asgi` from `app` and assigns `app_asgi`. Served via `uvicorn main:app_asgi`.
+### The `bullet` package — request lifecycle
 
-### `app/__init__.py` — the bullet app
-Creates a `BulletApp` instance with two routes:
-- `GET /` → returns `{"name": "loki", "age": 37}` as JSON
-- `GET /age/<age>` → returns `{"age": <age>}` as JSON (using parameter extraction from route pattern)
+The flow when a request arrives at `BulletApp.__call__`:
 
-### `bullet/__init__.py` — the bullet framework
+1. **`bullet/app.py` — `BulletApp`** is the ASGI callable. It handles the `lifespan` protocol, drains the request body (skipped for `_BODYLESS` methods: GET/HEAD/OPTIONS/DELETE), then routes:
+   - **Static routes** (`"<"` not in pattern) live in `self._static: dict` for O(1) lookup.
+   - **Dynamic routes** (`/users/<id>`) live in `self._dynamic: list` and are matched in registration order via compiled regex.
+   - Unmatched → 404 `{"error": "Not found"}`.
+   - All responses go through `_send_json`, which encodes with `msgspec.json.encode` and sets `Content-Type: application/json; charset=utf-8` + `Content-Length`.
 
-Core classes:
+2. **`bullet/_routing.py` — `Handler`** wraps one route + handler coroutine. At registration it inspects the handler signature to build extractor lists. `match(path)` returns the regex groupdict or `None`. `execute()` builds kwargs from the request, calls the handler, and returns `(status, body)`. Any `msgspec.DecodeError` (which `ValidationError` subclasses) during extraction is caught and returned as **400** `{"error": ...}`.
 
-- **`BulletApp`** — callable ASGI application. Handles the `lifespan` protocol, drains request body, iterates `self.handlers` (a `list[Handler]`) for route matching, dispatches to `Handler.execute()`, and sends JSON responses via `send_json`. Falls back to a hardcoded default response for unmatched routes.
+3. **`bullet/params.py` — parameter markers.** Handlers declare where each arg comes from via `Annotated` markers:
+   - `Query[MyStruct]` — query string → `msgspec.Struct` (via `msgspec.convert`, lenient coercion).
+   - `Body[MyStruct]` — JSON request body → struct (via `msgspec.json.decode`).
+   - `Path[MyStruct]` — path params → struct; **`Path[...]` requires a `msgspec.Struct`**, not a bare type.
+   - A bare annotated param whose name matches a `<route_param>` (e.g. `age: int`) is coerced directly without a marker struct.
+   - The `request: Request` first arg is always passed and is skipped by all marker logic.
 
-- **`Handler`** — wraps a route pattern and async handler callable. `match(path)` uses a compiled regex to extract path parameters as `dict[str, str]` or `None`. `execute(request, params)` converts param values using handler type annotations (`_convert_param`) and calls the handler.
+4. **`validate_handler()` (in `_routing.py`)** runs at registration time (`add_handler` / `@app.route`). It raises `ValueError` if any `<route_param>` is not covered by a handler arg or `Path` struct field. This is fail-fast registration validation — most "errors" in tests are `pytest.raises(ValueError)` at registration, not request-time failures.
 
-- **`Request`** — parsed ASGI `scope` into typed attributes (method, path, query_string, headers, body, etc.).
+5. **`bullet/_http.py` — `Request`** parses the ASGI `scope` lazily: `headers` (case-insensitive `Headers`), `query`, and `cookies` are computed on first access and cached. `request.json(type=...)` decodes the body via msgspec. `request.state` exposes the ASGI scope `state` dict populated by the lifespan (see below).
 
-- **`Addr`** — dataclass for server/client address (host, port).
+### Lifespan
 
-Utility functions:
+`BulletApp` supports a FastAPI-style lifespan via the `@app.lifespan` decorator (or the `BulletApp(lifespan=...)` constructor kwarg). The registered function runs startup code, `yield`s once, then runs shutdown code; an optional dict yielded at the `yield` is merged into the ASGI scope `state` and surfaces on `request.state`:
 
-- **`validate_handler(path, handler)`** — verifies that `<param>` placeholders in the route pattern correspond to annotated parameters on the handler (and are not defaulted). Raises `ValueError` if mismatched.
+```python
+@app.lifespan
+async def lifespan(app):
+    pool = await connect()      # startup
+    yield {"db": pool}          # state -> request.state["db"]
+    await pool.close()          # shutdown
+```
 
-- **`_compile_route(pattern)`** — converts a Flask-style route pattern (`/age/<age>`) into a compiled regex with named capture groups.
+A plain async generator is auto-wrapped with `contextlib.asynccontextmanager`; an already-wrapped CM factory is accepted as-is. `_as_lifespan` (in `app.py`) normalizes both forms. The protocol itself is driven by `BulletApp._run_lifespan`, which enters the CM on `lifespan.startup` (sending `...startup.failed` with the exception message on error) and exits it on `lifespan.shutdown`. With no lifespan registered it just acks the events.
 
-- **`_convert_param(value, annotation)`** — converts a string param value to `int`, `float`, or `str` based on the handler's type annotation.
+### Handler contract
 
-**Known issues / WIP in bullet:**
-- Unmatched routes return HTTP 200 with a hardcoded JSON body instead of 404.
-- The `Handler` constructor validates params eagerly in `validate_handler`, but doesn't check that the handler has a `request` parameter (the first positional arg).
+Handlers are `async def`, take `request: Request` first, and return `str | dict | msgspec.Struct`. There is currently **no response abstraction**: success status is always 200 (400/404 are produced by the framework, not the handler). No middleware, streaming/SSE, route groups, or custom status codes from handlers yet — see `feature.md` / `plan.md` for the roadmap.
 
-### `app/asgi.py` — raw ASGI reference
-A standalone raw ASGI `application(scope, receive, send)` with:
-- Lifespan protocol handling
-- Simple path-based routing: `/`, `/about`, `/contact`, `/api/*`
-- `send_html` and `send_json` response helpers
-- Partial `/api` routes for pydantic, marshmallow, msgspec (some commented out)
-- The `home_page` handler is incomplete
+### `bullet/testclient.py` — TestClient
 
-This module is **not** wired into `main.py` — it exists as a learning reference. `bullet/__init__.py` has its own independent `BulletApp.send_json` implementation.
+A **synchronous** test client modeled on Starlette's, built on `httpx2` + `anyio`. It does not hit the network: `_ASGITransport` builds a `scope`, drives the app on a worker event loop via an anyio blocking portal, and reassembles `http.response.*` messages into an `httpx.Response`. Using it as a context manager (`with TestClient(app) as client:`) additionally runs the app's `lifespan` startup/shutdown on a persistent portal. This is the standard way tests exercise the app.
 
-## Dependencies (`pyproject.toml`)
+## Notes
 
-### Runtime
-- `granian` — RSGI/ASGI/WSGI server
-- `gunicorn` — WSGI server
-- `uvicorn[standard]` — ASGI server (primary, used for development)
-- `msgspec`, `pydantic`, `ujson` — serialization (legacy from the old schema comparison project, may not all be in use currently)
-
-### Dev
-- `pyright` — static type checking
-- `pytest` — test runner
-- `requests` — HTTP client (used in `temp.py`)
-- `ruff` — linter + formatter
-
-## Conventions
-
-- No web framework — everything is built directly on the ASGI spec.
-- Type annotations are expected for handler parameters (used by `validate_handler`).
-- UTF-8 encoding for all string→bytes conversions.
-- JSON responses use `application/json; charset=utf-8`.
-- Route patterns use Flask-style `<param>` syntax.
-- The project has **no tests yet** despite pytest being configured.
+- `AGENTS.md` (`# QWEN.md`) is an older description and is partly stale (it predates the split of `bullet/__init__.py` into modules and references an `app/asgi.py` that no longer exists). Prefer the actual source.
+- Root-level scratch files are **not** part of the framework: `fapi.py` (FastAPI app for benchmark comparison), `bench.sh` + `fapi.md` (wrk benchmark results vs FastAPI), `excp.py` (exception-handling experiment), `debug.py` (alternative uvicorn runner). `dist/`, `.qwen/`, and the planning docs (`plan.md`, `feature.md` — in Russian) are likewise non-framework.
