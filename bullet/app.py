@@ -1,4 +1,14 @@
-from typing import Awaitable, Callable, TYPE_CHECKING
+import inspect
+from contextlib import asynccontextmanager
+from typing import (
+    Any,
+    AsyncContextManager,
+    Optional,
+    TypeVar,
+    Awaitable,
+    Callable,
+    TYPE_CHECKING,
+)
 
 import msgspec
 
@@ -12,14 +22,33 @@ if TYPE_CHECKING:
 _BODYLESS = frozenset({"GET", "HEAD", "OPTIONS", "DELETE"})
 _CT_JSON = (b"content-type", b"application/json; charset=utf-8")
 
+Lifespan = Callable[["BulletApp"], AsyncContextManager[Any]]
+_LifespanFunc = TypeVar("_LifespanFunc")
+
+
+def _as_lifespan(func: Any) -> Lifespan:
+    """Normalize a lifespan into an async context-manager factory.
+
+    Accepts a plain async generator function (wrapped with ``asynccontextmanager``,
+    so you can write one FastAPI-style without the decorator) or an already-built
+    context-manager factory, which is returned unchanged.
+    """
+    if inspect.isasyncgenfunction(func):
+        return asynccontextmanager(func)
+    return func
+
 
 class BulletApp:
-    def __init__(self):
+    def __init__(self, lifespan: Optional[Lifespan] = None):
         self._static: dict[str, Handler] = {}
         self._dynamic: list[Handler] = []
         self.exceptions_handlers: dict[
             type[Exception] | int, Callable[..., Awaitable["Response"]]
         ] = {}
+        self._lifespan: Optional[Lifespan] = (
+            _as_lifespan(lifespan) if lifespan is not None else None
+        )
+        self._lifespan_cm: Optional[AsyncContextManager[Any]] = None
 
     def add_exception_handler(
         self,
@@ -45,18 +74,48 @@ class BulletApp:
 
         return decorator
 
-    async def lifespan(self, scope, receive, send):
+    def lifespan(self, func: _LifespanFunc) -> _LifespanFunc:
+        """Register a startup/shutdown lifespan, FastAPI-style.
+
+        @app.lifespan
+        async def lifespan(app):
+            db = await connect()   # startup
+            yield {"db": db}       # optional state -> request.state
+            await db.close()       # shutdown
+        """
+        self._lifespan = _as_lifespan(func)
+        return func
+
+    async def _run_lifespan(self, scope, receive, send):
+        state = scope.get("state")
         while True:
             event = await receive()
             if event["type"] == "lifespan.startup":
+                try:
+                    if self._lifespan is not None:
+                        self._lifespan_cm = self._lifespan(self)
+                        result = await self._lifespan_cm.__aenter__()
+                        if result is not None and state is not None:
+                            state.update(result)
+                except BaseException as exc:
+                    await send({"type": "lifespan.startup.failed", "message": str(exc)})
+                    return
                 await send({"type": "lifespan.startup.complete"})
             elif event["type"] == "lifespan.shutdown":
+                try:
+                    if self._lifespan_cm is not None:
+                        await self._lifespan_cm.__aexit__(None, None, None)
+                except BaseException as exc:
+                    await send(
+                        {"type": "lifespan.shutdown.failed", "message": str(exc)}
+                    )
+                    return
                 await send({"type": "lifespan.shutdown.complete"})
                 return
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "lifespan":
-            await self.lifespan(scope, receive, send)
+            await self._run_lifespan(scope, receive, send)
             return
 
         body = b""

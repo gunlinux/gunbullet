@@ -33,6 +33,7 @@ class Request:
         "method",
         "path",
         "body",
+        "state",
         "_raw_headers",
         "_query_string",
         "_headers",
@@ -44,6 +45,8 @@ class Request:
         self.method: str = scope.get("method", "").upper()
         self.path: str = scope.get("path", "")
         self.body: bytes = body
+        s = scope.get("state")
+        self.state: dict[str, Any] = s if s is not None else {}
         self._raw_headers: list[tuple[bytes, bytes]] = scope.get("headers", [])
         self._query_string: bytes = scope.get("query_string", b"")
         self._headers: Headers | None = None
