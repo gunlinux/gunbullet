@@ -1,15 +1,15 @@
 .PHONY: dev
 dev: ## Install dev dependencies
 	uv sync --dev
-	uv run uvicorn main:app_asgi
+	uv run uvicorn main:app_asgi --loop uvloop --workers 4
 
 .PHONY: dev-rsgi
 dev-rsgi: ## Run the app under Granian's RSGI interface (Rust HTTP core)
-	uv run granian --interface rsgi main:app_asgi --workers 1 --no-ws
+	uv run granian --interface rsgi main:app_asgi --workers 4 --no-ws
 
 .PHONY: dev-asgi
 dev-asgi: ## Run the app under Granian's RSGI interface (Rust HTTP core)
-	uv run granian --interface asgi main:app_asgi --workers 1 --no-ws
+	uv run granian --interface asgi main:app_asgi --workers 4 --no-ws
 
 
 .PHONY: build

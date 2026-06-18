@@ -141,7 +141,6 @@ class GunbulletApp:
                 return
 
     async def __call__(self, scope, receive, send):
-        print(scope)
         if scope["type"] == "lifespan":
             await self._run_lifespan(scope, receive, send)
             return

@@ -15,3 +15,8 @@ wheels/
 
 # pytest-benchmark saved runs
 .benchmarks/
+
+# Local sqlite databases (generated/seeded at runtime)
+*.db
+*.db-wal
+*.db-shm
