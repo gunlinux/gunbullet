@@ -23,4 +23,8 @@ fix:  ## Fix lint errors
 test: ## Run tests with coverage
 	uv run pytest
 
+.PHONY: bench
+bench: ## Run in-process performance microbenchmarks
+	uv run pytest benchmarks/ --benchmark-columns=min,mean,median,ops
+
 

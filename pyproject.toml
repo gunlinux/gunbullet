@@ -44,5 +44,11 @@ dev = [
     "pyright>=1.1.410",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",
+    "pytest-benchmark>=4.0",
     "ruff>=0.15.16",
 ]
+
+[tool.pytest.ini_options]
+# Keep the default `pytest` / `make test` run scoped to the unit tests; the
+# in-process performance benchmarks live under benchmarks/ and run via `make bench`.
+testpaths = ["tests"]
