@@ -63,18 +63,6 @@ def validate_handler(
         )
 
 
-def _compile_route(pattern: str) -> re.Pattern[str]:
-    parts = re.split(r"(<\w+>)", pattern)
-    escaped = ""
-    for part in parts:
-        m = re.fullmatch(r"<(\w+)>", part)
-        if m:
-            escaped += f"(?P<{m[1]}>[^/]+)"
-        else:
-            escaped += re.escape(part)
-    return re.compile(f"^{escaped}$")
-
-
 class Handler:
     def __init__(
         self,
@@ -85,7 +73,6 @@ class Handler:
         self.handler = handler
         self.path = route
         self.methods = methods
-        self.pattern = _compile_route(route)
         self._extractors: list[tuple[str, type, type]] = []
         self._bare_path_params: list[tuple[str, type]] = []
         route_params = set(_param_re.findall(route))
@@ -100,12 +87,6 @@ class Handler:
 
     def allows(self, method: str) -> bool:
         return self.methods is None or method in self.methods
-
-    def match(self, path: str) -> dict[str, str] | None:
-        m = self.pattern.match(path)
-        if m is None:
-            return None
-        return m.groupdict()
 
     async def execute(
         self,

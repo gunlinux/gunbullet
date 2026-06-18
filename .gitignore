@@ -9,5 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Rust / maturin build artifacts
+/target/
+*.so
+
 # pytest-benchmark saved runs
 .benchmarks/

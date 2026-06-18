@@ -53,8 +53,45 @@ jobs:
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "Detected tag: ${TAG:-<none>} on ${SHA}"
 
-  build:
-    name: Build sdist + wheel
+  # Compiled abi3 wheels (one per platform, Python 3.10+) built by maturin.
+  wheels:
+    name: Build wheel (${{ matrix.platform.target }} on ${{ matrix.platform.runner }})
+    needs: detect
+    if: >-
+      needs.detect.outputs.tag != '' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { runner: ubuntu-latest, target: x86_64 }
+          - { runner: ubuntu-latest, target: aarch64 }
+          - { runner: macos-latest, target: aarch64 }
+          - { runner: macos-13, target: x86_64 }
+          - { runner: windows-latest, target: x64 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect.outputs.sha }}
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          # manylinux: auto cross-builds the Linux targets in a container.
+          manylinux: auto
+          args: --release --out dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.platform.runner }}-${{ matrix.platform.target }}
+          path: dist
+
+  # Source distribution -- the pure-Python PyRouter fallback makes this
+  # installable (slower) even where no prebuilt wheel matches.
+  sdist:
+    name: Build sdist
     needs: detect
     if: >-
       needs.detect.outputs.tag != '' ||
@@ -64,21 +101,20 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.detect.outputs.sha }}
-
-      - uses: astral-sh/setup-uv@v5
-
-      - name: Build
-        run: uv build
-
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: sdist
           path: dist
 
   publish:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [detect, build]
+    needs: [detect, wheels, sdist]
     if: needs.detect.outputs.tag != ''
     environment: pypi
     permissions:
@@ -86,6 +122,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: dist
+          # Collect every wheels-* and the sdist artifact into one dir.
           path: dist
+          merge-multiple: true
       - uses: pypa/gh-action-pypi-publish@release/v1

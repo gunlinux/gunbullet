@@ -30,17 +30,25 @@ Repository = "https://github.com/gunlinux/gunbullet"
 Issues = "https://github.com/gunlinux/gunbullet/issues"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
 
-[tool.hatch.build.targets.wheel]
-packages = ["gunbullet"]
+[tool.maturin]
+# Mixed Rust/Python layout: the Python package stays at the repo root
+# (gunbullet/) and the compiled router is dropped in beside it as
+# gunbullet/_gunbullet_router. The pure-Python PyRouter is the runtime
+# fallback (see gunbullet/_router.py), so the package still imports from an
+# sdist or on a platform without a prebuilt wheel.
+python-source = "."
+module-name = "gunbullet._gunbullet_router"
+features = ["pyo3/extension-module"]
 
 [dependency-groups]
 dev = [
     "anyio>=3.6.2,<5",
     "httpx>=0.28.1",
     "httpx2>=2.4.0",
+    "maturin>=1.7,<2",
     "pyright>=1.1.410",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",

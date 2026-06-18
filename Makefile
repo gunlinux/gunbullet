@@ -3,6 +3,14 @@ dev: ## Install dev dependencies
 	uv sync --dev
 	uv run uvicorn main:app_asgi
 
+.PHONY: build
+build: ## Compile the Rust router and install it editable into the venv
+	uv run maturin develop --release
+
+.PHONY: rust-test
+rust-test: ## Run the native Rust router unit tests
+	cargo test --release
+
 check: lint fix types test
 	echo "check"
 

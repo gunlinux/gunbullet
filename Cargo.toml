@@ -1,0 +1,22 @@
+[package]
+name = "gunbullet-router"
+version = "0.1.0"
+edition = "2021"
+description = "Radix-trie router backend for the gunbullet ASGI micro-framework"
+license = "MIT"
+
+[lib]
+# Must match the trailing component of `module-name` in [tool.maturin]
+# (gunbullet._gunbullet_router) and the #[pymodule] fn name in src/lib.rs.
+name = "_gunbullet_router"
+crate-type = ["cdylib"]
+
+[dependencies]
+# abi3-py310: one forward-compatible wheel per platform for Python 3.10+
+# (a superset of the project's requires-python = ">=3.13").
+# `extension-module` is added by maturin (see [tool.maturin] features) rather
+# than here, so `cargo test` can still link and run the native unit tests.
+pyo3 = { version = "0.28", features = ["abi3-py310"] }
+
+[profile.release]
+opt-level = 3

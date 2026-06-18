@@ -14,6 +14,7 @@ from typing import (
 import msgspec
 
 from gunbullet._http import Request, State
+from gunbullet._router import Router
 from gunbullet._routing import Handler, validate_handler
 from gunbullet._types import HandlerFunc
 
@@ -42,8 +43,8 @@ def _as_lifespan(func: Any) -> Lifespan:
 class GunbulletApp:
     def __init__(self, lifespan: Optional[Lifespan] = None):
         self.state = State()
-        self._static: dict[str, list[Handler]] = {}
-        self._dynamic: list[Handler] = []
+        self._router = Router()
+        self._handlers: list[Handler] = []
         self.exceptions_handlers: dict[
             type[Exception] | int, Callable[..., Awaitable["HandlerReturn"]]
         ] = {}
@@ -68,10 +69,9 @@ class GunbulletApp:
         validate_handler(route, handler=handler)
         norm = None if methods is None else frozenset(m.upper() for m in methods)
         h = Handler(route=route, handler=handler, methods=norm)
-        if "<" not in route:
-            self._static.setdefault(route, []).append(h)
-        else:
-            self._dynamic.append(h)
+        route_id = len(self._handlers)
+        self._handlers.append(h)
+        self._router.add(route, route_id)
 
     def route(
         self, path: str, methods: Iterable[str] | None = None
@@ -154,24 +154,15 @@ class GunbulletApp:
         method = scope.get("method", "GET").upper()
         path = scope["path"]
         request = Request(scope, body, app=self)
-        path_matched = False
 
-        for handler in self._static.get(path, ()):
-            path_matched = True
+        candidates = self._router.match(path)
+        for params, route_id in candidates:
+            handler = self._handlers[route_id]
             if handler.allows(method):
-                await self._dispatch(send, request, handler, None)
+                await self._dispatch(send, request, handler, params or None)
                 return
 
-        for handler in self._dynamic:
-            params = handler.match(path)
-            if params is None:
-                continue
-            path_matched = True
-            if handler.allows(method):
-                await self._dispatch(send, request, handler, params)
-                return
-
-        if path_matched:
+        if candidates:
             await _send_json(send, 405, {"error": "Method not allowed"})
         else:
             await _send_json(send, 404, {"error": "Not found"})
