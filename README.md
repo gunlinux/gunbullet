@@ -30,11 +30,13 @@ serialization/validation dependency.
 
 ```bash
 uv sync --dev                       # install deps (incl. linters, pytest)
-uv run uvicorn main:app_asgi        # run the dev server from the repo root
-make dev                            # uv sync --dev + run uvicorn
+make test                           # run the test suite
+make check                          # lint + fix + types + test
 ```
 
-Always run from the repo root — imports assume that working directory.
+See the [Quickstart](#quickstart) below for writing an app against the
+framework. A runnable example app lives in the separate `gunbullet_example`
+repo.
 
 ---
 
@@ -82,21 +84,43 @@ uv run uvicorn main:app_asgi
 A handler is an `async def` that:
 
 - takes `request: Request` as its **first** argument,
-- returns a `str`, `dict`, or `msgspec.Struct`.
+- returns a **body** (`str`, `dict`, or `msgspec.Struct`) — defaulting to
+  **200** — or an explicit **`(status, body)`** tuple to set the status code.
 
 Every return value is JSON-encoded with
-`Content-Type: application/json; charset=utf-8`. A successful handler always
-yields **200**; `400`, `404`, and `405` are produced by the framework, not the
-handler.
+`Content-Type: application/json; charset=utf-8`. `400`, `404`, and `405` are
+still produced by the framework on bad input / routing.
 
 ```python
 @app.get("/ping")
 async def ping(request: Request) -> dict:
-    return {"pong": True}
+    return {"pong": True}                 # 200
+
+@app.post("/items")
+async def create(request: Request) -> dict:
+    return 201, {"created": True}         # explicit status
 ```
 
-> There is no `Response` object yet — you cannot set custom status codes or
-> headers from a handler. See [Roadmap](#roadmap).
+### Typed returns: `Response` and `HandlerReturn`
+
+Two type aliases (importable from `gunbullet`) annotate what a handler returns:
+
+- `Response[T]` — the `(status, body)` tuple form, `tuple[int, T]`.
+- `HandlerReturn[T]` — either form, `Response[T] | T`. Use this when the handler
+  returns a **bare body** (defaulting to 200) so the annotation matches the
+  value the type checker sees.
+
+```python
+from gunbullet import Response, HandlerReturn
+
+@app.get("/")
+async def index(request: Request) -> HandlerReturn[Greeting]:
+    return Greeting(...)                  # bare body -> 200
+
+@app.get("/items/<item_id>")
+async def get_item(request: Request, item_id: int) -> Response[Item]:
+    return 200, item                      # explicit (status, body)
+```
 
 ---
 
@@ -312,6 +336,43 @@ async def version(request: Request) -> dict:
 
 ---
 
+## Exception handlers
+
+A handler can raise a plain domain exception and let a registered handler turn
+it into an HTTP response, keeping status-code plumbing out of the handlers
+themselves. Register one with `add_exception_handler(ExcType, handler)`; the
+handler takes `(request, exc)` and returns a body or `(status, body)` tuple like
+any other handler.
+
+```python
+class ItemNotFound(Exception):
+    def __init__(self, item_id: int) -> None:
+        super().__init__(f"item {item_id} does not exist")
+        self.item_id = item_id
+
+
+async def handle_not_found(request: Request, exc: Exception) -> Response:
+    assert isinstance(exc, ItemNotFound)
+    return 404, {"error": "not_found", "item_id": exc.item_id}
+
+
+@app.get("/items/<item_id>")
+async def get_item(request: Request, item_id: int) -> Response[Item]:
+    item = request.state["items"].get(item_id)
+    if item is None:
+        raise ItemNotFound(item_id)       # -> handle_not_found -> 404
+    return 200, item
+
+app.add_exception_handler(ItemNotFound, handle_not_found)
+```
+
+Dispatch matches the raised exception's **exact type** (`type(exc)`), not
+subclasses. A raised exception with no registered handler is **not** swallowed:
+under ASGI it propagates to the server's fallback, and under RSGI the framework
+emits `500 {"error": "Internal server error"}` (see the RSGI caveats below).
+
+---
+
 ## Running under Granian (RSGI)
 
 Besides the ASGI interface, the same `GunbulletApp` runs directly on Granian's
@@ -322,8 +383,6 @@ no per-chunk `receive()` loop and the response goes out in a single
 
 ```bash
 uv run granian --interface rsgi main:app_asgi --workers 1 --no-ws
-make dev-rsgi                        # same thing
-make bench-servers                   # load-compare uvicorn/ASGI vs granian/ASGI vs granian/RSGI (needs wrk)
 ```
 
 The same app object is served by both interfaces: ASGI calls `__call__`, RSGI
@@ -410,7 +469,7 @@ tests/             pytest suite driving the app through TestClient
 
 ```bash
 uv sync --dev      # install deps
-make dev           # sync + run uvicorn main:app_asgi
+make dev           # sync dev deps
 make check         # lint + fix + types + test  (run before finishing)
 make lint          # ruff check
 make fix           # ruff check --fix && ruff format
@@ -422,9 +481,9 @@ make test          # pytest
 
 ## Roadmap
 
-Not implemented yet (handlers are JSON-only and always 200 on success):
+Not implemented yet (responses are JSON-only):
 
-- A `Response` / `HTTPException` layer — custom status codes and headers from
-  handlers.
+- Custom response **headers** from handlers (status codes are supported via the
+  `(status, body)` tuple form).
 - Repeated query values (`?tag=a&tag=b` keeps only the first today).
 - Middleware, typed path converters (`<int:id>`), and non-JSON responses.
